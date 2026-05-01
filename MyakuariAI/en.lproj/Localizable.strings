@@ -1,0 +1,25 @@
+/* Miaku Psychology */
+"miaku_psych_low" = "Right now, they likely see you as a friend. But your next moves can change that.";
+"miaku_psych_med" = "They're a bit curious about you. Not sure yet, but you're on their radar.";
+"miaku_psych_high" = "They likely have feelings for you. They're paying attention and want to get closer.";
+"miaku_psych_very_high" = "They're really into you. With the right moment, things could move forward fast.";
+
+/* Next Steps - Low */
+"step_low_1" = "Find common interests and naturally increase your conversations";
+"step_low_2" = "Invite them to group activities to close the distance in a relaxed setting";
+"step_low_3" = "Don't rush. First, aim to be someone they feel safe around";
+
+/* Next Steps - Medium */
+"step_med_1" = "Try creating chances to hang out one-on-one. Coffee or lunch is low-pressure";
+"step_med_2" = "Show interest in what they like and express genuine empathy";
+"step_med_3" = "Gradually increase your messaging and texting frequency";
+
+/* Next Steps - High */
+"step_high_1" = "Great timing to ask them out. Suggest a specific date, time, and place";
+"step_high_2" = "Listen closely to them and make them feel special";
+"step_high_3" = "It's safe to start showing your feelings little by little";
+
+/* Next Steps - Very High */
+"step_vhigh_1" = "Think about when to confess. A relaxed, private moment works best";
+"step_vhigh_2" = "Be straightforward with your feelings. Don't beat around the bush";
+"step_vhigh_3" = "They might be waiting for you. Take a deep breath and go for it";

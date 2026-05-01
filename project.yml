@@ -33,6 +33,7 @@ targets:
     info:
       path: MyakuariAI/Info.plist
       properties:
+        CFBundleIconName: AppIcon
         CFBundleName: 脈ありAI
         CFBundleDisplayName: 脈ありAI
         CFBundleShortVersionString: "1.0"

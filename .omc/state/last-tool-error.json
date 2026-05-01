@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git commit -m \\\"$(cat <<'EOF'\\nInitial commit: 脈ありAI - AI love signal analyzer\\n\\n- Chat-based love consultation with 6 modes (片思い/恋人関係/脈あり?/LINE相談/失恋/修羅場)\\n- 脈あり診断 quiz with animated resu...",
+  "error": "Exit code 128\n[master (root-commit) 630369c] Initial commit: 脈ありAI - AI love signal analyzer\n 14 files changed, 2364 insertions(+)\n create mode 100644 .github/workflows/build.yml\n create mode 100644 MyakuariAI/AdviceEngine.swift\n create mode 100644 MyakuariAI/BannerAdView.swift\n create mode 100644 MyakuariAI/ConsultHistory.swift\n create mode 100644 MyakuariAI/ContentView.swift\n create mode 100644 MyakuariAI/HistoryView.swift\n create mode 100644 MyakuariAI/MiakuCheckView.swift\n create mode 100644...",
+  "timestamp": "2026-05-01T22:42:21.315Z",
+  "retry_count": 1
+}

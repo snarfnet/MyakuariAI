@@ -50,7 +50,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSUserTrackingUsageDescription: "This app uses data for personalized ads."
-        GADApplicationIdentifier: ca-app-pub-9404799280370656~5033830283
+        GADApplicationIdentifier: ca-app-pub-9404799280370656~7215078981
         SKAdNetworkItems:
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
           - SKAdNetworkIdentifier: 4fzdc2evr5.skadnetwork

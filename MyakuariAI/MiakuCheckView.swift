@@ -35,15 +35,26 @@ private let questions: [MiakuQuestion] = [
 struct MiakuCheckView: View {
     @ObservedObject var engine: AdviceEngine
     @ObservedObject var history: ConsultHistory
+    @StateObject private var interstitial = InterstitialAdManager()
     @State private var currentQ = 0
     @State private var answers: [Int] = []
     @State private var result: MiakuResult?
     @State private var showResult = false
+    @State private var showLoading = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if showResult, let result = result {
+                if showLoading {
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.3)
+                        Text("分析中…")
+                            .font(.headline)
+                            .foregroundStyle(.pink)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if showResult, let result = result {
                     MiakuResultView(result: result) {
                         reset()
                     }
@@ -60,16 +71,26 @@ struct MiakuCheckView: View {
                                 }
                             } else {
                                 result = engine.analyzeMiaku(answers: answers)
-                                withAnimation(.spring(response: 0.5)) {
-                                    showResult = true
-                                }
                                 history.saveDiagnosis(percentage: result!.percentage)
+                                // Show loading → interstitial → result
+                                withAnimation { showLoading = true }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    if interstitial.isReady {
+                                        interstitial.showAd()
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        withAnimation(.spring(response: 0.5)) {
+                                            showLoading = false
+                                            showResult = true
+                                        }
+                                    }
+                                }
                             }
                         }
                     )
                 }
 
-                BannerAdView(adUnitID: "ca-app-pub-9404799280370656/1118636003")
+                BannerAdView(adUnitID: "ca-app-pub-9404799280370656/4483914374")
                     .frame(height: 50)
             }
             .navigationTitle("脈あり診断")

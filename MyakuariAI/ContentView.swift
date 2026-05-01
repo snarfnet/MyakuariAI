@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let kBannerID = "ca-app-pub-9404799280370656/9614494112"
+private let kBannerID = "ca-app-pub-9404799280370656/4483914374"
 
 struct ContentView: View {
     @StateObject private var engine = AdviceEngine()
@@ -181,9 +181,11 @@ struct ChatView: View {
     @ObservedObject var engine: AdviceEngine
     @ObservedObject var history: ConsultHistory
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var interstitial = InterstitialAdManager()
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var isThinking = false
+    @AppStorage("chat_session_count") private var sessionCount = 0
 
     private let templates: [String] = [
         "既読スルーされた",
@@ -275,7 +277,17 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("閉じる") { dismiss() }
+                    Button("閉じる") {
+                        sessionCount += 1
+                        if sessionCount % 3 == 0 && interstitial.isReady {
+                            interstitial.showAd()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                dismiss()
+                            }
+                        } else {
+                            dismiss()
+                        }
+                    }
                 }
             }
             .onAppear {

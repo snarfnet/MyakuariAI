@@ -1,11 +1,25 @@
-import jwt, time, requests, sys
+import hashlib
+import os
+import sys
+import time
+
+import jwt
+import requests
 
 KEY_ID = 'WDXGY9WX55'
 ISSUER = '2be0734f-943a-4d61-9dc9-5d9045c46fec'
 BUNDLE_ID = 'com.tokyonasu.myakuariai'
+APP_VERSION = '1.0.1'
 BUILD_NUMBER = sys.argv[1]
+SCREENSHOT_DIR = 'screenshots/appstore'
+
+SCREENSHOT_GROUPS = [
+    ('APP_IPHONE_67', ['iphone_1_home.png', 'iphone_2_chat.png', 'iphone_3_result.png']),
+    ('APP_IPAD_PRO_3GEN_129', ['ipad_1_home.png', 'ipad_2_chat.png', 'ipad_3_result.png']),
+]
 
 p8 = open('/tmp/asc_key.p8').read()
+
 
 def make_token():
     return jwt.encode(
@@ -13,161 +27,277 @@ def make_token():
         p8, algorithm='ES256', headers={'kid': KEY_ID}
     )
 
+
 def headers():
     return {'Authorization': f'Bearer {make_token()}', 'Content-Type': 'application/json'}
 
+
 def api(method, path, **kwargs):
-    r = requests.request(method, f'https://api.appstoreconnect.apple.com/v1{path}',
-        headers=headers(), **kwargs)
-    return r
+    return requests.request(f'{method}', f'https://api.appstoreconnect.apple.com/v1{path}', headers=headers(), **kwargs)
 
-# Find app ID by bundle ID
-print(f'Looking up app by bundle ID: {BUNDLE_ID}')
-r = api('GET', f'/apps?filter[bundleId]={BUNDLE_ID}')
-data = r.json()
-if not data.get('data'):
-    print(f'App not found for bundle ID {BUNDLE_ID}. Create it in ASC first.')
-    sys.exit(0)
-APP_ID = data['data'][0]['id']
-print(f'App ID: {APP_ID}')
 
-print(f'Waiting for build {BUILD_NUMBER} to be processed...')
-build_id = None
-for i in range(80):
-    r = api('GET', f'/builds?filter[app]={APP_ID}&filter[version]={BUILD_NUMBER}&filter[processingState]=VALID&limit=1')
-    data = r.json()
-    if data.get('data'):
-        build_id = data['data'][0]['id']
-        print(f'Build ready: {build_id}')
-        break
-    print(f'  Waiting... ({i+1}/80)')
-    time.sleep(30)
+def api_json(method, path, **kwargs):
+    r = api(method, path, **kwargs)
+    try:
+        body = r.json()
+    except Exception:
+        body = {}
+    return r, body
 
-if not build_id:
-    print('WARNING: Build not found after 40 minutes. Check ASC manually.')
-    sys.exit(0)
 
-# Set export compliance
-r = api('PATCH', f'/builds/{build_id}',
-    json={'data': {'type': 'builds', 'id': build_id, 'attributes': {'usesNonExemptEncryption': False}}})
-print(f'Export compliance: {r.status_code}')
+def find_app_id():
+    print(f'Looking up app by bundle ID: {BUNDLE_ID}')
+    r, body = api_json('GET', f'/apps?filter[bundleId]={BUNDLE_ID}')
+    if not body.get('data'):
+        print(f'App not found for bundle ID {BUNDLE_ID}.')
+        sys.exit(1)
+    app_id = body['data'][0]['id']
+    print(f'App ID: {app_id}')
+    return app_id
 
-# Find version
-version_id = None
-version_state = None
-r = api('GET', f'/apps/{APP_ID}/appStoreVersions?filter[platform]=IOS&limit=1')
-data = r.json()
-if data.get('data'):
-    version_id = data['data'][0]['id']
-    version_state = data['data'][0]['attributes']['appStoreState']
-    print(f'Found version: {version_id} state={version_state}')
 
-if version_state in ('WAITING_FOR_REVIEW', 'IN_REVIEW'):
-    print(f'Already in review ({version_state}). Nothing to do.')
-    sys.exit(0)
+def find_or_create_version(app_id):
+    r, body = api_json('GET', f'/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=200')
+    versions = body.get('data', [])
+    for version in versions:
+        attrs = version.get('attributes', {})
+        if attrs.get('versionString') == APP_VERSION:
+            version_id = version['id']
+            state = attrs.get('appStoreState')
+            print(f'Found version {APP_VERSION}: {version_id} state={state}')
+            return version_id, state
 
-if not version_id or version_state in ('READY_FOR_DISTRIBUTION',):
-    print('Creating new version...')
-    r = api('POST', '/appStoreVersions', json={
+    print(f'Creating new version {APP_VERSION}...')
+    r, body = api_json('POST', '/appStoreVersions', json={
         'data': {
             'type': 'appStoreVersions',
-            'attributes': {'platform': 'IOS', 'versionString': '1.0'},
-            'relationships': {'app': {'data': {'type': 'apps', 'id': APP_ID}}}
+            'attributes': {'platform': 'IOS', 'versionString': APP_VERSION},
+            'relationships': {'app': {'data': {'type': 'apps', 'id': app_id}}}
         }
     })
     if r.status_code not in (200, 201):
-        print(f'Failed to create version: {r.text[:300]}')
+        print(f'Failed to create version: {r.status_code} {r.text[:500]}')
         sys.exit(1)
-    version_id = r.json()['data']['id']
-    version_state = 'PREPARE_FOR_SUBMISSION'
+    version_id = body['data']['id']
+    print(f'Created version {APP_VERSION}: {version_id}')
+    return version_id, 'PREPARE_FOR_SUBMISSION'
 
-print(f'Version ID: {version_id} state={version_state}')
 
-# Assign build
-r = api('PATCH', f'/appStoreVersions/{version_id}/relationships/build',
-    json={'data': {'type': 'builds', 'id': build_id}})
-print(f'Build assigned: {r.status_code}')
-
-# Cancel any blocking reviewSubmissions
-canceled_any = False
-for state_filter in ['UNRESOLVED_ISSUES', 'READY_FOR_REVIEW']:
-    r = api('GET', f'/apps/{APP_ID}/reviewSubmissions?filter[state]={state_filter}')
-    if r.status_code == 200:
-        for sub in r.json().get('data', []):
-            sid = sub['id']
-            st = sub['attributes']['state']
-            cr = api('PATCH', f'/reviewSubmissions/{sid}', json={
-                'data': {'type': 'reviewSubmissions', 'id': sid, 'attributes': {'canceled': True}}
-            })
-            print(f'Cancel {sid} state={st}: {cr.status_code}')
-            canceled_any = True
-
-if canceled_any:
-    print('Waiting 30s for cancellations to propagate...')
-    time.sleep(30)
-    r = api('GET', f'/apps/{APP_ID}/appStoreVersions?filter[platform]=IOS&limit=1')
-    data = r.json()
-    if data.get('data'):
-        version_id = data['data'][0]['id']
-        version_state = data['data'][0]['attributes']['appStoreState']
-        print(f'Version after cancel: {version_id} state={version_state}')
-    r = api('PATCH', f'/appStoreVersions/{version_id}/relationships/build',
-        json={'data': {'type': 'builds', 'id': build_id}})
-    print(f'Build re-assigned: {r.status_code}')
-
-# Submit
-submission_id = None
-for attempt in range(5):
-    r = api('POST', '/reviewSubmissions', json={
-        'data': {
-            'type': 'reviewSubmissions',
-            'relationships': {'app': {'data': {'type': 'apps', 'id': APP_ID}}}
-        }
-    })
-    if r.status_code == 201:
-        submission_id = r.json()['data']['id']
-        print(f'ReviewSubmission created: {submission_id}')
-        break
-    print(f'Create reviewSubmission attempt {attempt+1}/5 failed: {r.status_code} {r.text[:200]}')
-    if attempt < 4:
-        time.sleep(15)
-
-if not submission_id:
-    print('Could not create reviewSubmission after 5 attempts.')
+def wait_for_build(app_id):
+    print(f'Waiting for build {BUILD_NUMBER} to be processed...')
+    for i in range(80):
+        r, body = api_json('GET', f'/builds?filter[app]={app_id}&filter[version]={BUILD_NUMBER}&filter[processingState]=VALID&limit=1')
+        if body.get('data'):
+            build_id = body['data'][0]['id']
+            print(f'Build ready: {build_id}')
+            return build_id
+        print(f'  Waiting... ({i + 1}/80)')
+        time.sleep(30)
+    print('WARNING: Build not found after 40 minutes. Check ASC manually.')
     sys.exit(0)
 
-# Add item
-item_added = False
-for attempt in range(5):
-    r = api('POST', '/reviewSubmissionItems', json={
+
+def set_export_compliance(build_id):
+    r = api('PATCH', f'/builds/{build_id}', json={
+        'data': {'type': 'builds', 'id': build_id, 'attributes': {'usesNonExemptEncryption': False}}
+    })
+    print(f'Export compliance: {r.status_code}')
+
+
+def list_all(path):
+    all_data = []
+    next_path = path
+    while next_path:
+        r, body = api_json('GET', next_path)
+        if r.status_code != 200:
+            print(f'List failed {next_path}: {r.status_code} {r.text[:300]}')
+            return all_data
+        all_data.extend(body.get('data', []))
+        next_url = body.get('links', {}).get('next')
+        if not next_url:
+            break
+        next_path = next_url.split('/v1', 1)[1]
+    return all_data
+
+
+def delete_existing_screenshots(set_id):
+    screenshots = list_all(f'/appScreenshotSets/{set_id}/appScreenshots?limit=200')
+    for screenshot in screenshots:
+        ss_id = screenshot['id']
+        r = api('DELETE', f'/appScreenshots/{ss_id}')
+        print(f'      Delete old screenshot {ss_id}: {r.status_code}')
+
+
+def upload_one_screenshot(set_id, filepath, filename):
+    filesize = os.path.getsize(filepath)
+    checksum = hashlib.md5(open(filepath, 'rb').read()).hexdigest()
+    r, body = api_json('POST', '/appScreenshots', json={
         'data': {
-            'type': 'reviewSubmissionItems',
-            'relationships': {
-                'reviewSubmission': {'data': {'type': 'reviewSubmissions', 'id': submission_id}},
-                'appStoreVersion': {'data': {'type': 'appStoreVersions', 'id': version_id}}
+            'type': 'appScreenshots',
+            'attributes': {'fileName': filename, 'fileSize': filesize},
+            'relationships': {'appScreenshotSet': {'data': {'type': 'appScreenshotSets', 'id': set_id}}}
+        }
+    })
+    if r.status_code not in (200, 201):
+        print(f'      Reserve {filename}: FAILED {r.status_code} {r.text[:300]}')
+        return False
+
+    ss_data = body['data']
+    ss_id = ss_data['id']
+    upload_ops = ss_data['attributes']['uploadOperations']
+    print(f'      Reserved {filename}: {ss_id} ({len(upload_ops)} parts)')
+
+    with open(filepath, 'rb') as f:
+        file_data = f.read()
+
+    for op in upload_ops:
+        url = op['url']
+        offset = op['offset']
+        length = op['length']
+        op_headers = {h['name']: h['value'] for h in op['requestHeaders']}
+        chunk = file_data[offset:offset + length]
+        pr = requests.put(url, headers=op_headers, data=chunk)
+        print(f'        Upload part: {pr.status_code}')
+        if pr.status_code not in (200, 201):
+            return False
+
+    source_checksum = ss_data['attributes'].get('sourceFileChecksum') or checksum
+    r = api('PATCH', f'/appScreenshots/{ss_id}', json={
+        'data': {
+            'type': 'appScreenshots',
+            'id': ss_id,
+            'attributes': {'uploaded': True, 'sourceFileChecksum': source_checksum}
+        }
+    })
+    print(f'      Commit {filename}: {r.status_code}')
+    return r.status_code == 200
+
+
+def upload_screenshots(version_id):
+    print('Replacing screenshots...')
+    locs = list_all(f'/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=200')
+    if not locs:
+        print('  No localizations found; skipping screenshot upload.')
+        return
+
+    for loc in locs:
+        locale = loc['attributes'].get('locale', 'unknown')
+        loc_id = loc['id']
+        print(f'  Locale: {locale}')
+        sets = list_all(f'/appStoreVersionLocalizations/{loc_id}/appScreenshotSets?limit=200')
+        existing_sets = {s['attributes']['screenshotDisplayType']: s['id'] for s in sets}
+
+        for display_type, filenames in SCREENSHOT_GROUPS:
+            if display_type in existing_sets:
+                set_id = existing_sets[display_type]
+            else:
+                r, body = api_json('POST', '/appScreenshotSets', json={
+                    'data': {
+                        'type': 'appScreenshotSets',
+                        'attributes': {'screenshotDisplayType': display_type},
+                        'relationships': {
+                            'appStoreVersionLocalization': {'data': {'type': 'appStoreVersionLocalizations', 'id': loc_id}}
+                        }
+                    }
+                })
+                if r.status_code not in (200, 201):
+                    print(f'    Create set {display_type}: FAILED {r.status_code} {r.text[:300]}')
+                    continue
+                set_id = body['data']['id']
+
+            print(f'    Display: {display_type} set={set_id}')
+            delete_existing_screenshots(set_id)
+            for filename in filenames:
+                filepath = os.path.join(SCREENSHOT_DIR, filename)
+                if not os.path.exists(filepath):
+                    print(f'      Missing {filepath}; skipping')
+                    continue
+                upload_one_screenshot(set_id, filepath, filename)
+
+
+def assign_build(version_id, build_id):
+    r = api('PATCH', f'/appStoreVersions/{version_id}/relationships/build', json={'data': {'type': 'builds', 'id': build_id}})
+    print(f'Build assigned: {r.status_code}')
+
+
+def cancel_blocking_submissions(app_id):
+    canceled_any = False
+    for state_filter in ['UNRESOLVED_ISSUES', 'READY_FOR_REVIEW']:
+        r, body = api_json('GET', f'/apps/{app_id}/reviewSubmissions?filter[state]={state_filter}')
+        if r.status_code == 200:
+            for sub in body.get('data', []):
+                sid = sub['id']
+                st = sub['attributes']['state']
+                cr = api('PATCH', f'/reviewSubmissions/{sid}', json={
+                    'data': {'type': 'reviewSubmissions', 'id': sid, 'attributes': {'canceled': True}}
+                })
+                print(f'Cancel {sid} state={st}: {cr.status_code}')
+                canceled_any = True
+    if canceled_any:
+        print('Waiting 30s for cancellations to propagate...')
+        time.sleep(30)
+
+
+def submit_for_review(app_id, version_id):
+    submission_id = None
+    for attempt in range(5):
+        r, body = api_json('POST', '/reviewSubmissions', json={
+            'data': {'type': 'reviewSubmissions', 'relationships': {'app': {'data': {'type': 'apps', 'id': app_id}}}}
+        })
+        if r.status_code == 201:
+            submission_id = body['data']['id']
+            print(f'ReviewSubmission created: {submission_id}')
+            break
+        print(f'Create reviewSubmission attempt {attempt + 1}/5 failed: {r.status_code} {r.text[:300]}')
+        if attempt < 4:
+            time.sleep(15)
+
+    if not submission_id:
+        print('Could not create reviewSubmission after 5 attempts.')
+        sys.exit(0)
+
+    item_added = False
+    for attempt in range(5):
+        r = api('POST', '/reviewSubmissionItems', json={
+            'data': {
+                'type': 'reviewSubmissionItems',
+                'relationships': {
+                    'reviewSubmission': {'data': {'type': 'reviewSubmissions', 'id': submission_id}},
+                    'appStoreVersion': {'data': {'type': 'appStoreVersions', 'id': version_id}}
+                }
             }
-        }
-    })
-    print(f'Add item attempt {attempt+1}/5: {r.status_code}')
-    if r.status_code == 201:
-        item_added = True
-        break
-    if attempt < 4:
-        time.sleep(15)
+        })
+        print(f'Add item attempt {attempt + 1}/5: {r.status_code}')
+        if r.status_code == 201:
+            item_added = True
+            break
+        if attempt < 4:
+            time.sleep(15)
 
-if not item_added:
-    print(f'Failed to add item: {r.text[:300]}')
+    if not item_added:
+        print(f'Failed to add item: {r.text[:500]}')
+        sys.exit(0)
+
+    r, body = api_json('PATCH', f'/reviewSubmissions/{submission_id}', json={
+        'data': {'type': 'reviewSubmissions', 'id': submission_id, 'attributes': {'submitted': True}}
+    })
+    if r.status_code == 200:
+        state = body['data']['attributes']['state']
+        print(f'Submitted! State: {state}')
+    else:
+        print(f'Submit failed: {r.status_code} {r.text[:500]}')
+
+
+app_id = find_app_id()
+version_id, version_state = find_or_create_version(app_id)
+if version_state in ('WAITING_FOR_REVIEW', 'IN_REVIEW'):
+    print(f'Version {APP_VERSION} already in review ({version_state}). Nothing to do.')
     sys.exit(0)
 
-r = api('PATCH', f'/reviewSubmissions/{submission_id}', json={
-    'data': {
-        'type': 'reviewSubmissions',
-        'id': submission_id,
-        'attributes': {'submitted': True}
-    }
-})
-if r.status_code == 200:
-    state = r.json()['data']['attributes']['state']
-    print(f'Submitted! State: {state}')
-else:
-    print(f'Submit failed: {r.status_code} {r.text[:300]}')
+build_id = wait_for_build(app_id)
+set_export_compliance(build_id)
+upload_screenshots(version_id)
+assign_build(version_id, build_id)
+cancel_blocking_submissions(app_id)
+assign_build(version_id, build_id)
+submit_for_review(app_id, version_id)

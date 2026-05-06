@@ -18,6 +18,11 @@ SCREENSHOT_GROUPS = [
     ('APP_IPAD_PRO_3GEN_129', ['ipad_1_home.png', 'ipad_2_chat.png', 'ipad_3_result.png']),
 ]
 
+WHATS_NEW = {
+    'ja': 'デザインを大幅に刷新し、相談画面や診断結果をより見やすくしました。アプリのアイコンとスクリーンショットも新しい雰囲気に合わせて更新しています。',
+    'en-US': 'Refreshed the visual design, improved readability across the consultation and result screens, and updated the app icon and screenshots.',
+}
+
 p8 = open('/tmp/asc_key.p8').read()
 
 
@@ -215,6 +220,27 @@ def upload_screenshots(version_id):
                 upload_one_screenshot(set_id, filepath, filename)
 
 
+def update_version_localizations(version_id):
+    print('Updating version release notes...')
+    locs = list_all(f'/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=200')
+    if not locs:
+        print('  No localizations found for release notes.')
+        return
+
+    for loc in locs:
+        loc_id = loc['id']
+        locale = loc['attributes'].get('locale', 'unknown')
+        whats_new = WHATS_NEW.get(locale, WHATS_NEW['en-US'])
+        r = api('PATCH', f'/appStoreVersionLocalizations/{loc_id}', json={
+            'data': {
+                'type': 'appStoreVersionLocalizations',
+                'id': loc_id,
+                'attributes': {'whatsNew': whats_new}
+            }
+        })
+        print(f'  Release notes {locale}: {r.status_code}')
+
+
 def assign_build(version_id, build_id):
     r = api('PATCH', f'/appStoreVersions/{version_id}/relationships/build', json={'data': {'type': 'builds', 'id': build_id}})
     print(f'Build assigned: {r.status_code}')
@@ -254,7 +280,7 @@ def submit_for_review(app_id, version_id):
 
     if not submission_id:
         print('Could not create reviewSubmission after 5 attempts.')
-        sys.exit(0)
+        sys.exit(1)
 
     item_added = False
     for attempt in range(5):
@@ -275,8 +301,8 @@ def submit_for_review(app_id, version_id):
             time.sleep(15)
 
     if not item_added:
-        print(f'Failed to add item: {r.text[:500]}')
-        sys.exit(0)
+        print(f'Failed to add item: {r.text[:2000]}')
+        sys.exit(1)
 
     r, body = api_json('PATCH', f'/reviewSubmissions/{submission_id}', json={
         'data': {'type': 'reviewSubmissions', 'id': submission_id, 'attributes': {'submitted': True}}
@@ -285,7 +311,8 @@ def submit_for_review(app_id, version_id):
         state = body['data']['attributes']['state']
         print(f'Submitted! State: {state}')
     else:
-        print(f'Submit failed: {r.status_code} {r.text[:500]}')
+        print(f'Submit failed: {r.status_code} {r.text[:2000]}')
+        sys.exit(1)
 
 
 app_id = find_app_id()
@@ -296,6 +323,7 @@ if version_state in ('WAITING_FOR_REVIEW', 'IN_REVIEW'):
 
 build_id = wait_for_build(app_id)
 set_export_compliance(build_id)
+update_version_localizations(version_id)
 upload_screenshots(version_id)
 assign_build(version_id, build_id)
 cancel_blocking_submissions(app_id)

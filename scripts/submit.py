@@ -264,23 +264,50 @@ def cancel_blocking_submissions(app_id):
         time.sleep(30)
 
 
-def submit_for_review(app_id, version_id):
-    submission_id = None
-    for attempt in range(5):
-        r, body = api_json('POST', '/reviewSubmissions', json={
-            'data': {'type': 'reviewSubmissions', 'relationships': {'app': {'data': {'type': 'apps', 'id': app_id}}}}
-        })
-        if r.status_code == 201:
-            submission_id = body['data']['id']
-            print(f'ReviewSubmission created: {submission_id}')
-            break
-        print(f'Create reviewSubmission attempt {attempt + 1}/5 failed: {r.status_code} {r.text[:300]}')
-        if attempt < 4:
-            time.sleep(15)
+def get_submission_items(submission_id):
+    r, body = api_json('GET', f'/reviewSubmissions/{submission_id}/items?limit=200')
+    if r.status_code != 200:
+        print(f'List items for {submission_id} failed: {r.status_code} {r.text[:300]}')
+        return []
+    return body.get('data', [])
 
-    if not submission_id:
-        print('Could not create reviewSubmission after 5 attempts.')
-        sys.exit(1)
+
+def find_reusable_submission(app_id):
+    r, body = api_json('GET', f'/apps/{app_id}/reviewSubmissions?filter[state]=READY_FOR_REVIEW&limit=200')
+    if r.status_code != 200:
+        print(f'List reusable submissions failed: {r.status_code} {r.text[:300]}')
+        return None
+
+    for sub in body.get('data', []):
+        sid = sub['id']
+        attrs = sub.get('attributes', {})
+        items = get_submission_items(sid)
+        print(f'Reusable candidate {sid}: submittedDate={attrs.get("submittedDate")} items={len(items)}')
+        if not attrs.get('submittedDate') and not items:
+            return sid
+    return None
+
+
+def submit_for_review(app_id, version_id):
+    submission_id = find_reusable_submission(app_id)
+    if submission_id:
+        print(f'Reusing empty ReviewSubmission: {submission_id}')
+    else:
+        for attempt in range(5):
+            r, body = api_json('POST', '/reviewSubmissions', json={
+                'data': {'type': 'reviewSubmissions', 'relationships': {'app': {'data': {'type': 'apps', 'id': app_id}}}}
+            })
+            if r.status_code == 201:
+                submission_id = body['data']['id']
+                print(f'ReviewSubmission created: {submission_id}')
+                break
+            print(f'Create reviewSubmission attempt {attempt + 1}/5 failed: {r.status_code} {r.text[:500]}')
+            if attempt < 4:
+                time.sleep(15)
+
+        if not submission_id:
+            print('Could not create reviewSubmission after 5 attempts.')
+            sys.exit(1)
 
     item_added = False
     for attempt in range(5):

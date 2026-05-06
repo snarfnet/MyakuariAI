@@ -1,0 +1,23 @@
+name: Inspect App Store Connect
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up ASC API Key
+        env:
+          ASC_API_KEY_CONTENT: ${{ secrets.ASC_API_KEY_CONTENT }}
+        run: |
+          echo "$ASC_API_KEY_CONTENT" | base64 -D > /tmp/asc_key.p8
+
+      - name: Install PyJWT
+        run: pip3 install --break-system-packages PyJWT requests
+
+      - name: Inspect App Store Connect
+        run: python3 scripts/inspect_asc.py

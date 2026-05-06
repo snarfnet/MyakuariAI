@@ -33,10 +33,9 @@ class ConsultHistory: ObservableObject {
 
     func save(mode: ConsultMode, messages: [ChatMessage]) {
         let userMsgs = messages.filter(\.isUser)
-        let preview = userMsgs.last?.text ?? ""
-        // Update existing or add new
+        let preview = userMsgs.last?.text ?? "相談メモ"
         if let idx = sessions.firstIndex(where: {
-            $0.mode == mode && Calendar.current.isDate($0.date, inSameDayAs: Date())
+            $0.mode == mode && Calendar.current.isDate($0.date, inSameDayAs: Date()) && $0.diagnosisPercent == nil
         }) {
             sessions[idx] = ConsultSession(mode: mode, preview: preview)
         } else {

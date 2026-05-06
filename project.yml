@@ -34,8 +34,8 @@ targets:
       path: MyakuariAI/Info.plist
       properties:
         CFBundleIconName: AppIcon
-        CFBundleName: 脈ありAI
-        CFBundleDisplayName: 脈ありAI
+        CFBundleName: "脈ありAI"
+        CFBundleDisplayName: "脈ありAI"
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
         LSRequiresIPhoneOS: true

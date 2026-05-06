@@ -1,0 +1,99 @@
+name: Generate App Store Screenshots
+
+on:
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          XCODE_APP=$(ls /Applications/ | grep "^Xcode_" | sort -V | tail -1)
+          sudo xcode-select -s "/Applications/$XCODE_APP"
+          xcodebuild -version
+          xcrun simctl list devicetypes | grep -E "iPhone|iPad" | tail -40
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -scheme MyakuariAI \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=iPhone 16 Pro Max" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Capture iPhone screenshots
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots-generated
+          BUNDLE_ID="com.tokyonasu.myakuariai"
+          APP_PATH=$(find build/DerivedData/Build/Products/Debug-iphonesimulator -name "MyakuariAI.app" -print -quit)
+          DEVICE="iPhone 16 Pro Max"
+
+          xcrun simctl shutdown all || true
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus booted -b
+          xcrun simctl status_bar booted override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+          xcrun simctl install booted "$APP_PATH"
+
+          capture () {
+            local screen="$1"
+            local file="$2"
+            xcrun simctl terminate booted "$BUNDLE_ID" || true
+            xcrun simctl launch booted "$BUNDLE_ID" -screenshots -screenshotScreen "$screen"
+            sleep 4
+            xcrun simctl io booted screenshot "screenshots-generated/$file"
+          }
+
+          capture home iphone_1_home.png
+          capture chat iphone_2_chat.png
+          capture result iphone_3_result.png
+
+      - name: Capture iPad screenshots
+        run: |
+          set -euo pipefail
+          BUNDLE_ID="com.tokyonasu.myakuariai"
+          APP_PATH=$(find build/DerivedData/Build/Products/Debug-iphonesimulator -name "MyakuariAI.app" -print -quit)
+          DEVICE="iPad Pro 13-inch (M4)"
+
+          if ! xcrun simctl list devicetypes | grep -q "$DEVICE"; then
+            echo "iPad Pro 13-inch (M4) not available; skipping iPad screenshots."
+            exit 0
+          fi
+
+          xcrun simctl shutdown all || true
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus booted -b
+          xcrun simctl status_bar booted override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 || true
+          xcrun simctl install booted "$APP_PATH"
+
+          capture () {
+            local screen="$1"
+            local file="$2"
+            xcrun simctl terminate booted "$BUNDLE_ID" || true
+            xcrun simctl launch booted "$BUNDLE_ID" -screenshots -screenshotScreen "$screen"
+            sleep 4
+            xcrun simctl io booted screenshot "screenshots-generated/$file"
+          }
+
+          capture home ipad_1_home.png
+          capture chat ipad_2_chat.png
+          capture result ipad_3_result.png
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: myakuariai-screenshots
+          path: screenshots-generated/*.png
+          if-no-files-found: error

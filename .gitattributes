@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.swift text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.plist text eol=lf
+*.strings text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary

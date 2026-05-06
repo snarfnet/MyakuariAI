@@ -6,30 +6,14 @@ struct MiakuQuestion {
 }
 
 private let questions: [MiakuQuestion] = [
-    MiakuQuestion(text: "相手からLINEや連絡が来る頻度は？", options: [
-        "ほぼ来ない", "たまに来る", "週に数回", "ほぼ毎日", "1日に何度も"
-    ]),
-    MiakuQuestion(text: "2人きりの時、相手の態度は？", options: [
-        "素っ気ない", "普通", "少し楽しそう", "明らかに嬉しそう", "特別感がある"
-    ]),
-    MiakuQuestion(text: "目が合った時の相手の反応は？", options: [
-        "すぐそらす", "無表情", "軽く微笑む", "じっと見つめる", "照れる"
-    ]),
-    MiakuQuestion(text: "あなたの話を相手はどう聞く？", options: [
-        "興味なさそう", "普通に聞く", "よく覚えてる", "質問してくる", "すごく楽しそう"
-    ]),
-    MiakuQuestion(text: "ボディタッチや距離感は？", options: [
-        "距離を置かれる", "普通の距離", "少し近い", "よく触れてくる", "かなり近い"
-    ]),
-    MiakuQuestion(text: "あなたの予定や休日を聞いてくる？", options: [
-        "全く聞かない", "たまに", "時々聞く", "よく聞く", "毎回聞いてくる"
-    ]),
-    MiakuQuestion(text: "相手のSNSでの反応は？", options: [
-        "反応なし", "たまにいいね", "よくいいね", "コメントもする", "DMも来る"
-    ]),
-    MiakuQuestion(text: "2人で会う提案をした時の反応は？", options: [
-        "断られる", "曖昧にされる", "都合が合えばOK", "喜んでOK", "相手から誘ってくる"
-    ]),
+    MiakuQuestion(text: "相手からLINEや連絡が来る頻度は？", options: ["ほぼ来ない", "たまに来る", "週に数回", "ほぼ毎日", "一日に何度も"]),
+    MiakuQuestion(text: "二人きりの時、相手の態度は？", options: ["そっけない", "普通", "少し楽しそう", "明らかに嬉しそう", "特別感がある"]),
+    MiakuQuestion(text: "目が合った時の相手の反応は？", options: ["すぐそらす", "無表情", "軽く微笑む", "また見てくる", "照れている"]),
+    MiakuQuestion(text: "あなたの話を相手はどう聞く？", options: ["興味なさそう", "普通に聞く", "よく覚えている", "質問してくる", "すごく楽しそう"]),
+    MiakuQuestion(text: "距離感やボディタッチは？", options: ["距離を置かれる", "普通の距離", "少し近い", "よく触れてくる", "かなり近い"]),
+    MiakuQuestion(text: "あなたの予定や休日を聞いてくる？", options: ["全く聞かない", "たまに", "時々聞く", "よく聞く", "毎回聞いてくる"]),
+    MiakuQuestion(text: "SNSでの反応は？", options: ["反応なし", "たまにいいね", "よくいいね", "コメントもする", "DMも来る"]),
+    MiakuQuestion(text: "二人で会う提案への反応は？", options: ["断られる", "曖昧にされる", "都合が合えばOK", "喜んでOK", "相手から誘ってくる"])
 ]
 
 struct MiakuCheckView: View {
@@ -44,71 +28,73 @@ struct MiakuCheckView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                if showLoading {
-                    VStack(spacing: 16) {
-                        ProgressView()
-                            .scaleEffect(1.3)
-                        Text("分析中…")
-                            .font(.headline)
-                            .foregroundStyle(.pink)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if showResult, let result = result {
-                    MiakuResultView(result: result) {
-                        reset()
-                    }
-                } else {
-                    QuizView(
-                        question: questions[currentQ],
-                        index: currentQ,
-                        total: questions.count,
-                        onAnswer: { score in
-                            answers.append(score)
-                            if currentQ < questions.count - 1 {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    currentQ += 1
-                                }
-                            } else {
-                                result = engine.analyzeMiaku(answers: answers)
-                                history.saveDiagnosis(percentage: result!.percentage)
-                                // Show loading → interstitial → result
-                                withAnimation { showLoading = true }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                    if interstitial.isReady {
-                                        interstitial.showAd()
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        withAnimation(.spring(response: 0.5)) {
-                                            showLoading = false
-                                            showResult = true
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    )
-                }
+            ZStack {
+                MyakuariBackground()
 
-                BannerAdView(adUnitID: "ca-app-pub-9404799280370656/4483914374")
-                    .frame(height: 50)
+                VStack(spacing: 0) {
+                    if showLoading {
+                        AnalyzingView()
+                    } else if showResult, let result {
+                        MiakuResultView(result: result) { reset() }
+                    } else {
+                        QuizView(
+                            question: questions[currentQ],
+                            index: currentQ,
+                            total: questions.count,
+                            onAnswer: answer
+                        )
+                    }
+
+                    if !AppRuntime.isScreenshotRun {
+                        BannerAdView(adUnitID: "ca-app-pub-9404799280370656/4483914374")
+                            .frame(height: 50)
+                    }
+                }
             }
             .navigationTitle("脈あり診断")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear {
+                guard AppRuntime.isScreenshotRun && AppRuntime.screenshotScreen == "result" else { return }
+                result = engine.analyzeMiaku(answers: [3, 4, 3, 4, 3, 3, 4, 4])
+                showLoading = false
+                showResult = true
+            }
+        }
+    }
+
+    private func answer(_ score: Int) {
+        answers.append(score)
+        if currentQ < questions.count - 1 {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                currentQ += 1
+            }
+        } else {
+            result = engine.analyzeMiaku(answers: answers)
+            history.saveDiagnosis(percentage: result!.percentage)
+            withAnimation { showLoading = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if interstitial.isReady { interstitial.showAd() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) {
+                        showLoading = false
+                        showResult = true
+                    }
+                }
+            }
         }
     }
 
     private func reset() {
-        withAnimation {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
             currentQ = 0
             answers = []
             result = nil
             showResult = false
+            showLoading = false
         }
     }
 }
-
-// MARK: - Quiz
 
 struct QuizView: View {
     let question: MiakuQuestion
@@ -117,216 +103,253 @@ struct QuizView: View {
     let onAnswer: (Int) -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
-            // Progress
-            VStack(spacing: 8) {
-                ProgressView(value: Double(index), total: Double(total))
-                    .tint(.pink)
-                Text("\(index + 1) / \(total)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal)
-            .padding(.top)
-
-            Spacer()
-
-            // Question
-            Text(question.text)
-                .font(.title3)
-                .fontWeight(.semibold)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            Spacer()
-
-            // Options
-            VStack(spacing: 10) {
-                ForEach(Array(question.options.enumerated()), id: \.offset) { idx, option in
-                    Button {
-                        onAnswer(idx)
-                    } label: {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 22) {
+                GlassPanel(radius: 24) {
+                    VStack(alignment: .leading, spacing: 18) {
                         HStack {
-                            Text(option)
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
+                            GradientIcon(systemName: "sparkles", size: 46)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("AI診断中")
+                                    .font(.headline.weight(.black))
+                                    .foregroundStyle(.white)
+                                Text("質問 \(index + 1) / \(total)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(MyakuariTheme.softText)
+                            }
                             Spacer()
-                            Image(systemName: "\(idx + 1).circle")
-                                .foregroundStyle(.pink.opacity(0.5))
                         }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.secondarySystemBackground))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.pink.opacity(0.1), lineWidth: 1)
-                        )
+
+                        ProgressView(value: Double(index + 1), total: Double(total))
+                            .tint(MyakuariTheme.rose)
+                            .scaleEffect(x: 1, y: 1.4, anchor: .center)
+
+                        Text(question.text)
+                            .font(.system(size: 27, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineSpacing(4)
                     }
-                    .buttonStyle(.plain)
+                    .padding(20)
+                }
+
+                VStack(spacing: 12) {
+                    ForEach(Array(question.options.enumerated()), id: \.offset) { idx, option in
+                        Button { onAnswer(idx) } label: {
+                            HStack(spacing: 14) {
+                                Text("\(idx + 1)")
+                                    .font(.headline.weight(.black))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 34, height: 34)
+                                    .background(Circle().fill(Color.white.opacity(0.12)))
+
+                                Text(option)
+                                    .font(.body.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.82)
+
+                                Spacer()
+
+                                Image(systemName: "heart.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(MyakuariTheme.rose)
+                            }
+                            .padding(16)
+                            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.white.opacity(0.105)))
+                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(MyakuariTheme.stroke, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
-            .padding(.horizontal)
-
-            Spacer()
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 28)
         }
     }
 }
 
-// MARK: - Result (THE KEY SCREEN)
+struct AnalyzingView: View {
+    @State private var rotate = false
+    @State private var scale = false
+
+    var body: some View {
+        VStack(spacing: 26) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .stroke(MyakuariTheme.rose.opacity(0.18), lineWidth: 18)
+                    .frame(width: 190, height: 190)
+                Circle()
+                    .trim(from: 0, to: 0.72)
+                    .stroke(MyakuariTheme.romanceGradient, style: StrokeStyle(lineWidth: 18, lineCap: .round))
+                    .frame(width: 190, height: 190)
+                    .rotationEffect(.degrees(rotate ? 360 : 0))
+                Image(systemName: "sparkles")
+                    .font(.system(size: 54, weight: .black))
+                    .foregroundStyle(.white)
+                    .scaleEffect(scale ? 1.18 : 0.92)
+                    .shadow(color: MyakuariTheme.rose, radius: 18)
+            }
+
+            VStack(spacing: 8) {
+                Text("恋のサインを解析中")
+                    .font(.title2.weight(.black))
+                    .foregroundStyle(.white)
+                Text("視線、返信、距離感から脈あり度を計算しています")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(MyakuariTheme.softText)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 26)
+
+            Spacer()
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 1.15).repeatForever(autoreverses: false)) { rotate = true }
+            withAnimation(.easeInOut(duration: 0.75).repeatForever(autoreverses: true)) { scale = true }
+        }
+    }
+}
 
 struct MiakuResultView: View {
     let result: MiakuResult
     let onRetry: () -> Void
     @State private var animatedPercentage: Double = 0
-    @State private var showDetails = false
 
     private var gaugeColor: Color {
         switch result.level {
-        case .low:      return .gray
+        case .low:      return Color.white.opacity(0.55)
         case .medium:   return .orange
-        case .high:     return .pink
-        case .veryHigh: return .red
+        case .high:     return MyakuariTheme.rose
+        case .veryHigh: return MyakuariTheme.coral
         }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Gauge
-                VStack(spacing: 16) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color(.systemGray5), lineWidth: 14)
-                            .frame(width: 180, height: 180)
-
-                        Circle()
-                            .trim(from: 0, to: animatedPercentage / 100)
-                            .stroke(
-                                gaugeColor,
-                                style: StrokeStyle(lineWidth: 14, lineCap: .round)
-                            )
-                            .frame(width: 180, height: 180)
-                            .rotationEffect(.degrees(-90))
-
-                        VStack(spacing: 4) {
-                            Text("脈あり度")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("\(Int(animatedPercentage))%")
-                                .font(.system(size: 44, weight: .bold, design: .rounded))
-                                .foregroundStyle(gaugeColor)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 18) {
+                GlassPanel(radius: 28) {
+                    VStack(spacing: 18) {
+                        ZStack {
+                            Circle()
+                                .stroke(Color.white.opacity(0.11), lineWidth: 16)
+                                .frame(width: 210, height: 210)
+                            Circle()
+                                .trim(from: 0, to: animatedPercentage / 100)
+                                .stroke(MyakuariTheme.romanceGradient, style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                                .frame(width: 210, height: 210)
+                                .rotationEffect(.degrees(-90))
+                            VStack(spacing: 4) {
+                                Text("脈あり度")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(MyakuariTheme.softText)
+                                Text("\(Int(animatedPercentage))%")
+                                    .font(.system(size: 54, weight: .black, design: .rounded))
+                                    .foregroundStyle(.white)
+                                Text(result.level.label)
+                                    .font(.headline.weight(.black))
+                                    .foregroundStyle(gaugeColor)
+                            }
                         }
+
+                        Text(result.psychology)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(MyakuariTheme.cream)
+                            .lineSpacing(5)
+                            .multilineTextAlignment(.center)
                     }
-
-                    Text(result.level.label)
-                        .font(.headline)
-                        .foregroundStyle(gaugeColor)
+                    .padding(22)
                 }
-                .padding(.top, 20)
 
-                // Psychology card
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("相手の心理", systemImage: "brain.head.profile")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.pink)
-
-                    Text(result.psychology)
-                        .font(.subheadline)
-                        .lineSpacing(4)
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color.pink.opacity(0.06))
-                )
-                .padding(.horizontal)
-
-                // Next steps card
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("次にやるべきこと", systemImage: "arrow.right.circle")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.purple)
-
-                    ForEach(Array(result.nextSteps.enumerated()), id: \.offset) { idx, step in
-                        HStack(alignment: .top, spacing: 10) {
-                            Text("\(idx + 1)")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.white)
-                                .frame(width: 22, height: 22)
-                                .background(Circle().fill(Color.purple.opacity(0.7)))
-
-                            Text(step)
-                                .font(.subheadline)
-                                .lineSpacing(3)
+                ResultCard(title: "次にやるべきこと", icon: "arrow.up.heart.fill", tint: MyakuariTheme.lavender) {
+                    VStack(spacing: 12) {
+                        ForEach(Array(result.nextSteps.enumerated()), id: \.offset) { idx, step in
+                            HStack(alignment: .top, spacing: 12) {
+                                Text("\(idx + 1)")
+                                    .font(.caption.weight(.black))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 26, height: 26)
+                                    .background(Circle().fill(MyakuariTheme.romanceGradient))
+                                Text(step)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
                 }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color.purple.opacity(0.06))
-                )
-                .padding(.horizontal)
 
-                // Book-based advice
-                if !result.advice.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label("恋愛の知恵", systemImage: "book.closed")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.orange)
-
+                ResultCard(title: "AIからのひとこと", icon: "brain.head.profile", tint: MyakuariTheme.rose) {
+                    VStack(alignment: .leading, spacing: 10) {
                         ForEach(result.advice, id: \.self) { tip in
                             Text(tip)
-                                .font(.caption)
-                                .lineSpacing(3)
-                                .padding()
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.orange.opacity(0.06))
-                                )
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(MyakuariTheme.cream)
+                                .lineSpacing(4)
+                                .padding(13)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.08)))
                         }
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color(.secondarySystemBackground))
-                    )
-                    .padding(.horizontal)
                 }
 
-                // Retry button
-                Button {
-                    onRetry()
-                } label: {
-                    Text("もう一度診断する")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 14)
-                        .background(Capsule().fill(Color.pink))
+                Button { onRetry() } label: {
+                    HStack {
+                        Image(systemName: "sparkles")
+                        Text("もう一度診断する")
+                    }
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(MyakuariTheme.romanceGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .shadow(color: MyakuariTheme.rose.opacity(0.35), radius: 18, x: 0, y: 8)
                 }
-                .padding(.vertical, 8)
-
-                Spacer(minLength: 20)
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 28)
         }
         .onAppear {
-            withAnimation(.easeOut(duration: 1.2)) {
+            withAnimation(.easeOut(duration: 1.15)) {
                 animatedPercentage = Double(result.percentage)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                withAnimation { showDetails = true }
+        }
+    }
+}
+
+struct ResultCard<Content: View>: View {
+    let title: String
+    let icon: String
+    let tint: Color
+    @ViewBuilder var content: Content
+
+    init(title: String, icon: String, tint: Color, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.tint = tint
+        self.content = content()
+    }
+
+    var body: some View {
+        GlassPanel(radius: 24) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: icon)
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(tint)
+                    Text(title)
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(.white)
+                }
+                content
             }
+            .padding(18)
         }
     }
 }
